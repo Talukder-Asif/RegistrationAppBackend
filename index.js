@@ -3,9 +3,25 @@ const cors = require("cors");
 const app = express();
 require("dotenv").config();
 const port = process.env.PORT || 3000;
+const crypto = require("crypto");
 
+function generateShortId() {
+  return crypto.randomBytes(4).toString("hex");
+}
 // middleware
-app.use(cors());
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "http://localhost:4173",
+      "https://registration.exstudentsforum-brghs.com",
+      "https://www.registration.exstudentsforum-brghs.com",
+      "https://api.registration.exstudentsforum-brghs.com",
+      "https://www.api.registration.exstudentsforum-brghs.com",
+    ],
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
@@ -67,9 +83,7 @@ async function run() {
           photoURL: data.photoURL,
           role: data.role,
           batch: data.batch,
-          studentID: data.studentID,
-          accountType: data.accountType,
-          department: data.department,
+          phone: data.phone,
         },
       };
       try {
@@ -101,37 +115,46 @@ async function run() {
     };
     app.post("/participant", async (req, res) => {
       const data = req.body;
+      data.participantId = generateShortId();
       const participant = await findParticipant(data);
       if (!participant) {
         const result = await Registration.insertOne(data);
-        res.send(result);
+        res.send({ ...result, participantId: data.participantId });
       } else {
-        res?.send("500");
+        res.json({
+          success: false,
+          message: "Participant already exists, Try another phone number",
+          status: 500,
+        });
       }
     });
+    // get single participantData
+    app.get("/participant/:id", async (req, res) => {
+      const id = req.params.id;
+      const quary = { participantId: id };
+      const result = await Registration.findOne(quary);
+      res.send(result);
+    });
 
-    // get voter
-    app.get("/voter", async (req, res) => {
-      const result = await voterCollection
-        .find()
-        .sort({ studentID: 1 })
+    // get the total number of participantData
+    app.get("/totalPC", async (req, res) => {
+      const count = await Registration.find().toArray();
+      res.send(count);
+    });
+
+    // Get Contest data from the database for common users
+    app.get("/allParticipant", async (req, res) => {
+      const page = parseInt(req.query.page);
+      const size = parseInt(req.query.size);
+
+      const result = await Registration.find()
+        .sort({ _id: -1 })
+        .skip(page * size)
+        .limit(size)
         .toArray();
       res.send(result);
     });
 
-    // get voter
-    app.get("/voter/:department", async (req, res) => {
-      const { department } = req.params;
-
-      const result = await voterCollection
-        .find({
-          department: department,
-        })
-        .sort({ studentID: 1 })
-        .toArray();
-      res.send(result);
-    });
-
     //
     //
     //
@@ -139,29 +162,7 @@ async function run() {
     //
     //
 
-    // Delete all voters whose department matches the parameter
-    app.delete("/voters/:department/:batch", async (req, res) => {
-      try {
-        const { department, batch } = req.params;
-
-        const result = await voterCollection.deleteMany({
-          department: department,
-          batch: batch, // Assuming batch is a field in your voter document
-        });
-
-        res.status(200).send({
-          message: `All voters from ${department} department and ${batch} batch deleted successfully`,
-          result,
-        });
-      } catch (error) {
-        res.status(500).send({
-          message: `Error deleting voters from ${department} department and ${batch} batch`,
-          error,
-        });
-      }
-    });
-
-    await client.db("admin").command({ ping: 1 });
+    // await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
