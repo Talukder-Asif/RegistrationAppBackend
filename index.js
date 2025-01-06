@@ -1,14 +1,13 @@
 const express = require("express");
 const cors = require("cors");
-const app = express();
-require("dotenv").config();
-const port = process.env.PORT || 3000;
 const crypto = require("crypto");
+require("dotenv").config();
 
-function generateShortId() {
-  return crypto.randomBytes(4).toString("hex");
-}
-// middleware
+const app = express();
+const port = process.env.PORT || 3000;
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+
+// Middleware
 app.use(
   cors({
     origin: [
@@ -23,11 +22,10 @@ app.use(
   })
 );
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+// MongoDB Client
 const uri = `mongodb+srv://${process.env.nameOfUser}:${process.env.Password}@registrationfor100yearc.09glv.mongodb.net/?retryWrites=true&w=majority&appName=RegistrationFor100YearCelebration`;
-
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -36,148 +34,282 @@ const client = new MongoClient(uri, {
   },
 });
 
+// Helper to generate short ID
+function generateShortId() {
+  return crypto.randomBytes(4).toString("hex");
+}
+
+// Utility to wrap async functions
+const asyncWrapper = (fn) => (req, res, next) => {
+  Promise.resolve(fn(req, res, next)).catch(next);
+};
+
 async function run() {
   try {
-    // await client.connect();
     const database = client.db("100_Year_Celebration");
     const userCollection = database.collection("user");
     const Registration = database.collection("participant");
 
-    // CRUD
-    const findUser = (email) => {
-      return userCollection.findOne({ email: email });
-    };
+    // CRUD operations
+    app.post(
+      "/user",
+      asyncWrapper(async (req, res) => {
+        const data = req.body;
+        const user = await userCollection.findOne({ email: data.email });
+        if (!user) {
+          const result = await userCollection.insertOne(data);
+          res.send(result);
+        }
+      })
+    );
 
-    app.post("/user", async (req, res) => {
-      const data = req.body;
-      const user = await findUser(data.email);
-      if (!user) {
-        const result = await userCollection.insertOne(data);
+    app.get(
+      "/user",
+      asyncWrapper(async (req, res) => {
+        const result = await userCollection.find().toArray();
         res.send(result);
-      }
-    });
+      })
+    );
 
-    // get User information
-    app.get("/user", async (req, res) => {
-      const result = await userCollection.find().toArray();
-      res.send(result);
-    });
+    app.get(
+      "/user/:email",
+      asyncWrapper(async (req, res) => {
+        const userEmail = req.params.email;
+        const result = await userCollection.findOne({ email: userEmail });
+        res.send(result);
+      })
+    );
 
-    // get single User information
-    app.get("/user/:email", async (req, res) => {
-      const userEmail = req.params.email;
-      const quary = { email: userEmail };
-      const result = await userCollection.findOne(quary);
-      res.send(result);
-    });
-
-    // update User information
-    app.put("/user/:email", async (req, res) => {
-      const Uemail = req.params.email;
-      const data = req.body;
-      const filter = { email: Uemail };
-      const options = { upsert: true };
-      const updateTeam = {
-        $set: {
-          name: data.name,
-          photoURL: data.photoURL,
-          role: data.role,
-          batch: data.batch,
-          phone: data.phone,
-        },
-      };
-      try {
+    app.put(
+      "/user/:email",
+      asyncWrapper(async (req, res) => {
+        const email = req.params.email;
+        const data = req.body;
         const result = await userCollection.updateOne(
-          filter,
-          updateTeam,
-          options
+          { email },
+          { $set: data },
+          { upsert: true }
         );
         res.send(result);
-      } catch (err) {
-        console.error("Error updating user:", err);
-        res.status(500).send("Error updating user");
-      }
-    });
-
-    // Delete User information
-    app.delete("/user/:id", async (req, res) => {
-      const id = req.params.id;
-      const query = {
-        _id: new ObjectId(id),
-      };
-      const result = await userCollection.deleteOne(query);
-      res.send(result);
-    });
-
-    // CRUD for participantData
-    const findParticipant = (data) => {
-      return Registration.findOne({ phone: data.phone });
-    };
-    app.post("/participant", async (req, res) => {
-      const data = req.body;
-      data.participantId = generateShortId();
-      const participant = await findParticipant(data);
-      if (!participant) {
-        const result = await Registration.insertOne(data);
-        res.send({ ...result, participantId: data.participantId });
-      } else {
-        res.json({
-          success: false,
-          message: "Participant already exists, Try another phone number",
-          status: 500,
-        });
-      }
-    });
-    // get single participantData
-    app.get("/participant/:id", async (req, res) => {
-      const id = req.params.id;
-      const quary = { participantId: id };
-      const result = await Registration.findOne(quary);
-      res.send(result);
-    });
-
-    // get the total number of participantData
-    app.get("/totalPC", async (req, res) => {
-      const count = await Registration.find().toArray();
-      res.send(count);
-    });
-
-    // Get Contest data from the database for common users
-    app.get("/allParticipant", async (req, res) => {
-      const page = parseInt(req.query.page);
-      const size = parseInt(req.query.size);
-
-      const result = await Registration.find()
-        .sort({ _id: -1 })
-        .skip(page * size)
-        .limit(size)
-        .toArray();
-      res.send(result);
-    });
-
-    //
-    //
-    //
-    //
-    //
-    //
-
-    // await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
+      })
     );
-  } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close();
+
+    app.delete(
+      "/user/:id",
+      asyncWrapper(async (req, res) => {
+        const id = req.params.id;
+        const result = await userCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        res.send(result);
+      })
+    );
+    app.post(
+      "/participant",
+      asyncWrapper(async (req, res) => {
+        const data = req.body;
+        const participant = await Registration.findOne({ phone: data.phone });
+
+        data.participantId = generateShortId();
+        if (!participant) {
+          // Create a new participant
+          const result = await Registration.insertOne(data);
+          res.send({ ...result, participantId: data.participantId });
+        } else {
+          res.json({
+            status: 500,
+            success: false,
+            message: `Participant already exists. Search your Registration form using Your name or contact with us`,
+          });
+        }
+      })
+    );
+
+    app.get(
+      "/participant/:id",
+      asyncWrapper(async (req, res) => {
+        const id = req.params.id;
+        const result = await Registration.findOne({ participantId: id });
+        res.send(result);
+      })
+    );
+
+    app.get(
+      "/totalParticipant",
+      asyncWrapper(async (req, res) => {
+        const count = await Registration.countDocuments();
+        res.send({ total: count });
+      })
+    );
+
+    app.get(
+      "/allParticipant",
+      asyncWrapper(async (req, res) => {
+        const page = parseInt(req.query.page) || 0;
+        const size = parseInt(req.query.size) || 10;
+        const result = await Registration.find()
+          .sort({ _id: -1 })
+          .skip(page * size)
+          .limit(size)
+          .toArray();
+        res.send(result);
+      })
+    );
+
+    app.put(
+      "/participant/:id",
+      asyncWrapper(async (req, res) => {
+        const participantId = req.params.id;
+        const data = req.body;
+
+        try {
+          const result = await Registration.updateOne(
+            { participantId },
+            { $set: data },
+            { upsert: false }
+          );
+
+          if (result.matchedCount === 0) {
+            return res
+              .status(404)
+              .json({ success: false, message: "Participant not found." });
+          }
+
+          if (result.modifiedCount === 0) {
+            // Document found but no changes were made
+            return res.json({
+              success: true,
+              message: "Participant data is already up to date.",
+            });
+          }
+
+          // Data was successfully updated
+          res.send(result);
+        } catch (error) {
+          console.error("Error updating participant:", error);
+          res.status(500).json({
+            success: false,
+            message: "An error occurred while updating the participant.",
+          });
+        }
+      })
+    );
+
+    // Get the search from the database
+    app.get("/participants/search", async (req, res) => {
+      const name_english = req.query.query;
+      const results = await Registration.find({
+        name_english: { $regex: name_english, $options: "i" },
+      }).toArray();
+      res.send(results);
+    });
+
+    // Payment
+    app.post("/create-payment", async (req, res) => {
+      const data = req.body;
+      const initialData = {
+        merchantbillno: "01843730611",
+        customername: data?.customername,
+        customernumber: data?.customernumber,
+        amount: 2000 + data?.driverFee + data?.familyFee,
+        invoicedescription: "Participant Registration",
+        successURL:
+          "https://api.registration.exstudentsforum-brghs.com/success-payment",
+        failureURL:
+          "https://registration.exstudentsforum-brghs.com/payment-failed",
+        sendsms: "1",
+      };
+
+      //
+      const result = await Registration.findOne({
+        phone: data?.customernumber,
+      });
+      try {
+        const payload = new URLSearchParams(initialData).toString();
+
+        const response = await fetch(
+          "https://agamipay.com/merchant/api/invoice/create_invoice.php",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+              APIKEY: `${process.env.paymentAPI}`,
+            },
+            body: payload,
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+
+        const responseData = await response.json();
+
+        if (responseData.error) {
+          res.status(400).send({ message: responseData.message });
+        } else {
+          const participantData = {
+            ...result,
+            paymentID: responseData?.paymentID,
+          };
+          const updateResult = await Registration.updateOne(
+            { phone: data?.customernumber },
+            { $set: participantData },
+            { upsert: true }
+          );
+
+          if (updateResult.modifiedCount > 0)
+            res.send({ pay_url: responseData?.pay_url });
+        }
+      } catch (error) {
+        console.error("Error creating payment:", error);
+        res.status(500).send({ message: "Internal server error" });
+      }
+    });
+
+    // Success URL
+    app.get("/success-payment", async (req, res) => {
+      const query = { paymentID: req.query.paymentID };
+      const update = { $set: { status: "Paid" } };
+      const result = await Registration.updateOne(query, update);
+      console.log(result);
+      if (result.modifiedCount > 0) {
+        res.redirect(
+          "https://registration.exstudentsforum-brghs.com/payment-success"
+        );
+      }
+    });
+
+    console.log("Connected to MongoDB!");
+  } catch (err) {
+    console.error("Error connecting to MongoDB:", err);
   }
 }
 run().catch(console.dir);
 
-// Route
+// Root route
 app.get("/", (req, res) => {
   res.send("Hello World!");
 });
 
+// Global Error Handler
+app.use((err, req, res, next) => {
+  console.error("Unhandled Error:", err.message);
+  res.status(500).json({
+    success: false,
+    message: "Internal Server Error. Please try again later.",
+  });
+});
+
+// Handle Uncaught Exceptions and Unhandled Rejections
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err);
+});
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection:", reason);
+});
+
+// Start the server
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
