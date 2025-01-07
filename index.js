@@ -204,25 +204,31 @@ async function run() {
       res.send(results);
     });
 
+    // Get the Data by PaymentID
+    app.get("/payment/:paymentID", async (req, res) => {
+      const paymentID = req.params.paymentID;
+      const result = await Registration.findOne({ paymentID });
+      res.send(result);
+    });
+
     // Payment
     app.post("/create-payment", async (req, res) => {
       const data = req.body;
       const initialData = {
-        merchantbillno: "01843730611",
+        merchantbillno: data?.merchantbillno,
         customername: data?.customername,
         customernumber: data?.customernumber,
         amount: 2000 + data?.driverFee + data?.familyFee,
+        // amount: 1,
         invoicedescription: "Participant Registration",
-        successURL:
-          "https://api.registration.exstudentsforum-brghs.com/success-payment",
-        failureURL:
-          "https://registration.exstudentsforum-brghs.com/payment-failed",
+        successURL: "http://localhost:3000/success-payment",
+        failureURL: "http://localhost:5173/payment-failed",
         sendsms: "1",
       };
 
       //
       const result = await Registration.findOne({
-        phone: data?.customernumber,
+        participantId: data?.merchantbillno,
       });
       try {
         const payload = new URLSearchParams(initialData).toString();
@@ -253,10 +259,11 @@ async function run() {
             paymentID: responseData?.paymentID,
           };
           const updateResult = await Registration.updateOne(
-            { phone: data?.customernumber },
+            { participantId: data?.merchantbillno },
             { $set: participantData },
             { upsert: true }
           );
+          console.log(responseData);
 
           if (updateResult.modifiedCount > 0)
             res.send({ pay_url: responseData?.pay_url });
@@ -275,7 +282,7 @@ async function run() {
       console.log(result);
       if (result.modifiedCount > 0) {
         res.redirect(
-          "https://registration.exstudentsforum-brghs.com/payment-success"
+          `http://localhost:5173/payment-success/${req.query.paymentID}`
         );
       }
     });
