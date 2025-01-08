@@ -218,10 +218,10 @@ async function run() {
         merchantbillno: data?.merchantbillno,
         customername: data?.customername,
         customernumber: data?.customernumber,
-        amount: data?.children
-          ? 2000 + data?.driverFee + data?.familyFee - data.children * 500
-          : 2000 + data?.driverFee + data?.familyFee,
-        // amount: 1,
+        // amount: data?.children
+        //   ? 2000 + data?.driverFee + data?.familyFee - data.children * 500
+        //   : 2000 + data?.driverFee + data?.familyFee,
+        amount: 1,
         invoicedescription: "Participant Registration",
         successURL: "http://localhost:3000/success-payment",
         failureURL: "http://localhost:5173/payment-failed",
@@ -259,7 +259,7 @@ async function run() {
           const participantData = {
             ...result,
             paymentID: responseData?.paymentID,
-            paidAmount: responseData?.amount,
+            paidAmount: responseData?.data.amount,
           };
           const updateResult = await Registration.updateOne(
             { participantId: data?.merchantbillno },
