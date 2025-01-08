@@ -88,7 +88,7 @@ async function run() {
         const result = await userCollection.updateOne(
           { email },
           { $set: data },
-          { upsert: true }
+          { upsert: false }
         );
         res.send(result);
       })
@@ -218,7 +218,9 @@ async function run() {
         merchantbillno: data?.merchantbillno,
         customername: data?.customername,
         customernumber: data?.customernumber,
-        amount: 2000 + data?.driverFee + data?.familyFee,
+        amount: data?.children
+          ? 2000 + data?.driverFee + data?.familyFee - data.children * 500
+          : 2000 + data?.driverFee + data?.familyFee,
         // amount: 1,
         invoicedescription: "Participant Registration",
         successURL: "http://localhost:3000/success-payment",
@@ -257,11 +259,12 @@ async function run() {
           const participantData = {
             ...result,
             paymentID: responseData?.paymentID,
+            paidAmount: responseData?.amount,
           };
           const updateResult = await Registration.updateOne(
             { participantId: data?.merchantbillno },
             { $set: participantData },
-            { upsert: true }
+            { upsert: false }
           );
           console.log(responseData);
 
@@ -276,7 +279,7 @@ async function run() {
 
     // Success URL
     app.get("/success-payment", async (req, res) => {
-      const query = { paymentID: req.query.paymentID };
+      const query = { paymentID: req?.query?.paymentID };
       const update = { $set: { status: "Paid" } };
       const result = await Registration.updateOne(query, update);
       console.log(result);
