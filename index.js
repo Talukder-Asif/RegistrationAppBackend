@@ -125,6 +125,40 @@ async function run() {
       })
     );
 
+    // Get Statistic Data
+    app.get("/status-summary", async (req, res) => {
+      try {
+        const participants = await Registration.find().toArray();
+
+        const summary = {
+          totalGuests: participants?.length,
+          totalFamilyMembers: participants?.reduce(
+            (sum, p) => sum + (p?.family_members || 0),
+            0
+          ),
+          totalChildren: participants.reduce(
+            (sum, p) => sum + (p?.children ? Number(p.children) : 0),
+            0
+          ),
+          driversOneDay: participants.filter(
+            (p) => p?.driver === "Driver for 1 day"
+          ).length,
+          driversTwoDays: participants.filter(
+            (p) => p?.driver === "Driver for 2 days"
+          ).length,
+          tshirtSizes: participants.reduce((sizes, p) => {
+            sizes[p?.tshirt_size] = (sizes[p?.tshirt_size] || 0) + 1;
+            return sizes;
+          }, {}),
+        };
+
+        res.json(summary);
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ error: "Failed to fetch status summary" });
+      }
+    });
+
     app.get(
       "/participant/:id",
       asyncWrapper(async (req, res) => {
