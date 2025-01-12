@@ -124,14 +124,31 @@ async function run() {
         }
       })
     );
+    app.put(
+      "/update/participant/:participantId",
+      asyncWrapper(async (req, res) => {
+        const participantId = req.params.participantId;
+        const data = { ...req.body };
+        const result = await Registration.updateOne(
+          { participantId },
+          { $set: data },
+          { upsert: false }
+        );
+        res.send(result);
+      })
+    );
 
     // Get Statistic Data
     app.get("/status-summary", async (req, res) => {
       try {
-        const participants = await Registration.find().toArray();
+        const formFillUp = await Registration.countDocuments();
+        const participants = await Registration.find({
+          status: "Paid",
+        }).toArray();
 
         const summary = {
-          totalGuests: participants?.length,
+          formFillUp,
+          totalPaidGuests: participants?.length,
           totalFamilyMembers: participants?.reduce(
             (sum, p) => sum + (p?.family_members || 0),
             0
@@ -147,7 +164,8 @@ async function run() {
             (p) => p?.driver === "Driver for 2 days"
           ).length,
           tshirtSizes: participants.reduce((sizes, p) => {
-            sizes[p?.tshirt_size] = (sizes[p?.tshirt_size] || 0) + 1;
+            const sizeKey = p?.tshirt_size?.replace(/^(\d)/, "_$1");
+            sizes[sizeKey] = (sizes[sizeKey] || 0) + 1;
             return sizes;
           }, {}),
         };
@@ -252,10 +270,10 @@ async function run() {
         merchantbillno: data?.merchantbillno,
         customername: data?.customername,
         customernumber: data?.customernumber,
-        // amount: data?.children
-        //   ? 2000 + data?.driverFee + data?.familyFee - data.children * 500
-        //   : 2000 + data?.driverFee + data?.familyFee,
-        amount: 1,
+        amount: data?.children
+          ? 2000 + data?.driverFee + data?.familyFee - data.children * 500
+          : 2000 + data?.driverFee + data?.familyFee,
+        // amount: 1,
         invoicedescription: "Participant Registration",
         successURL: "http://localhost:3000/success-payment",
         failureURL: "http://localhost:5173/payment-failed",
@@ -281,13 +299,13 @@ async function run() {
           }
         );
 
-        if (!response.ok) {
+        if (!response?.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
 
         const responseData = await response.json();
 
-        if (responseData.error) {
+        if (responseData?.error) {
           res.status(400).send({ message: responseData.message });
         } else {
           const participantData = {
@@ -297,12 +315,9 @@ async function run() {
           };
           const updateResult = await Registration.updateOne(
             { participantId: data?.merchantbillno },
-            { $set: participantData },
-            { upsert: false }
+            { $set: participantData }
           );
-          console.log(responseData);
-
-          if (updateResult.modifiedCount > 0)
+          if (updateResult?.modifiedCount > 0)
             res.send({ pay_url: responseData?.pay_url });
         }
       } catch (error) {
@@ -319,7 +334,7 @@ async function run() {
       console.log(result);
       if (result.modifiedCount > 0) {
         res.redirect(
-          `http://localhost:5173/payment-success/${req.query.paymentID}`
+          `http://localhost:5173/payment-success/${req?.query?.paymentID}`
         );
       }
     });
