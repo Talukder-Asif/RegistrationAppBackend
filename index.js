@@ -208,6 +208,17 @@ async function run() {
       })
     );
 
+    // Get All SSC Years
+    app.get("/allSscYears", async (req, res) => {
+      try {
+        const sscYears = await Registration.distinct("ssc_year");
+        const sortedYears = sscYears.sort((a, b) => a - b);
+        res.send({ years: sortedYears });
+      } catch (error) {
+        res.status(500).send({ error: "Failed to retrieve SSC years" });
+      }
+    });
+
     app.put(
       "/participant/:id",
       asyncWrapper(async (req, res) => {
