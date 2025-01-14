@@ -221,12 +221,38 @@ async function run() {
         const uniqueYears = [
           ...new Set(sscYears.map((entry) => entry.ssc_year)),
         ].sort(); // Sort in ascending order
-        console.log(uniqueYears);
         res.send(uniqueYears);
       } catch (error) {
         console.error("Error retrieving SSC years:", error);
         res.status(500).send({ error: "Failed to retrieve SSC years" });
       }
+    });
+    // Get Paid SSC Years
+    app.get("/allSscYears/paid", async (req, res) => {
+      try {
+        const sscYears = await Registration.aggregate([
+          { $match: { status: "Paid" } },
+          { $group: { _id: "$ssc_year", count: { $sum: 1 } } },
+          { $sort: { _id: 1 } },
+        ]).toArray();
+
+        res.send(sscYears);
+      } catch (error) {
+        console.error("Error retrieving SSC years:", error);
+        res.status(500).send({ error: "Failed to retrieve SSC years" });
+      }
+    });
+
+    // Get Filtered Participant
+    app.get("/filtered/registration", async (req, res) => {
+      const status = req?.query?.status;
+      const sscYear = req?.query?.targetBatch;
+      const result = await Registration.find({
+        status: status,
+        ssc_year: sscYear,
+      }).toArray();
+
+      res.send(result);
     });
 
     app.put(
