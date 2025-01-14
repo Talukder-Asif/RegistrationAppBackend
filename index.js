@@ -242,6 +242,21 @@ async function run() {
         res.status(500).send({ error: "Failed to retrieve SSC years" });
       }
     });
+    // Get unpaid SSC Years
+    app.get("/allSscYears/unpaid", async (req, res) => {
+      try {
+        const sscYears = await Registration.aggregate([
+          { $match: { status: "Unpaid" } },
+          { $group: { _id: "$ssc_year", count: { $sum: 1 } } },
+          { $sort: { _id: 1 } },
+        ]).toArray();
+
+        res.send(sscYears);
+      } catch (error) {
+        console.error("Error retrieving SSC years:", error);
+        res.status(500).send({ error: "Failed to retrieve SSC years" });
+      }
+    });
 
     // Get Filtered Participant
     app.get("/filtered/registration", async (req, res) => {
@@ -251,8 +266,16 @@ async function run() {
         status: status,
         ssc_year: sscYear,
       }).toArray();
+      const summary = {
+        result,
+        tshirtSizes: result.reduce((sizes, p) => {
+          const sizeKey = p?.tshirt_size?.replace(/^(\d)/, "_$1");
+          sizes[sizeKey] = (sizes[sizeKey] || 0) + 1;
+          return sizes;
+        }, {}),
+      };
 
-      res.send(result);
+      res.send(summary);
     });
 
     app.put(
