@@ -1,6 +1,9 @@
 const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
+const multer = require("multer");
+const fs = require("fs");
+const path = require("path");
 require("dotenv").config();
 
 const app = express();
@@ -211,10 +214,17 @@ async function run() {
     // Get All SSC Years
     app.get("/allSscYears", async (req, res) => {
       try {
-        const sscYears = await Registration.distinct("ssc_year");
-        const sortedYears = sscYears.sort((a, b) => a - b);
-        res.send({ years: sortedYears });
+        const sscYears = await Registration.find(
+          {},
+          { projection: { ssc_year: 1, _id: 0 } }
+        ).toArray();
+        const uniqueYears = [
+          ...new Set(sscYears.map((entry) => entry.ssc_year)),
+        ].sort(); // Sort in ascending order
+        console.log(uniqueYears);
+        res.send(uniqueYears);
       } catch (error) {
+        console.error("Error retrieving SSC years:", error);
         res.status(500).send({ error: "Failed to retrieve SSC years" });
       }
     });
@@ -286,8 +296,10 @@ async function run() {
           : 2000 + data?.driverFee + data?.familyFee,
         // amount: 1,
         invoicedescription: "Participant Registration",
-        successURL: "http://localhost:3000/success-payment",
-        failureURL: "http://localhost:5173/payment-failed",
+        successURL:
+          "https://api.registration.exstudentsforum-brghs.com/success-payment",
+        failureURL:
+          "https://registration.exstudentsforum-brghs.com/payment-failed",
         sendsms: "1",
       };
 
@@ -345,9 +357,42 @@ async function run() {
       console.log(result);
       if (result.modifiedCount > 0) {
         res.redirect(
-          `http://localhost:5173/payment-success/${req?.query?.paymentID}`
+          `https://registration.exstudentsforum-brghs.com/payment-success/${req?.query?.paymentID}`
         );
       }
+    });
+
+    // ImageUpload
+    const uploadDir = path.join(__dirname, "public/Images");
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true }); // Create folder if it doesn't exist
+    }
+
+    // Serve static files from the 'public' directory
+    app.use("/public", express.static(path.join(__dirname, "public")));
+
+    const storage = multer.diskStorage({
+      destination: function (req, file, cb) {
+        cb(null, uploadDir); // Save files to 'public/Images'
+      },
+      filename: function (req, file, cb) {
+        cb(null, `${Date.now()}_${file.originalname}`); // Unique filename
+      },
+    });
+
+    const upload = multer({ storage });
+
+    app.post("/upload", upload.single("file"), (req, res) => {
+      const fileUrl = `${req.protocol}://${req.get("host")}/public/Images/${
+        req.file.filename
+      }`;
+      console.log("Body:", req.body);
+      console.log("File:", req.file);
+      res.send({
+        message: "File uploaded successfully",
+        file: req.file,
+        url: fileUrl, // Return the file URL
+      });
     });
 
     console.log("Connected to MongoDB!");
