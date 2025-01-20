@@ -111,22 +111,28 @@ async function run() {
       "/participant",
       asyncWrapper(async (req, res) => {
         const data = req.body;
-        const participant = await Registration.findOne({ phone: data.phone });
+
+        const cleanPhone = data?.phone?.replace(/[\s\-()]/g, "");
+
+        const participant = await Registration.findOne({ phone: cleanPhone });
 
         data.participantId = generateShortId();
+
         if (!participant) {
-          // Create a new participant
+          data.phone = cleanPhone;
+
           const result = await Registration.insertOne(data);
           res.send({ ...result, participantId: data.participantId });
         } else {
           res.json({
             status: 500,
             success: false,
-            message: `Participant already exists. Search your Registration form using Your name or contact with us`,
+            message: `Participant already exists. Search your Registration form using your name or contact us.`,
           });
         }
       })
     );
+
     app.put(
       "/update/participant/:participantId",
       asyncWrapper(async (req, res) => {
@@ -185,6 +191,17 @@ async function run() {
       asyncWrapper(async (req, res) => {
         const id = req.params.id;
         const result = await Registration.findOne({ participantId: id });
+        res.send(result);
+      })
+    );
+
+    app.delete(
+      "/delete-participant/:id",
+      asyncWrapper(async (req, res) => {
+        const id = req.params.id;
+        const result = await Registration.deleteOne({
+          _id: new ObjectId(id),
+        });
         res.send(result);
       })
     );
@@ -387,7 +404,8 @@ async function run() {
           };
           const updateResult = await Registration.updateOne(
             { participantId: data?.merchantbillno },
-            { $set: participantData }
+            { $set: participantData },
+            { upsert: false }
           );
           if (updateResult?.modifiedCount > 0)
             res.send({ pay_url: responseData?.pay_url });
