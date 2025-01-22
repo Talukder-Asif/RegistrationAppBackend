@@ -107,29 +107,44 @@ async function run() {
         res.send(result);
       })
     );
+
+    // create a new Registration
+    // Create a new Registration
     app.post(
       "/participant",
       asyncWrapper(async (req, res) => {
         const data = req.body;
 
+        // Sanitize the phone number
         const cleanPhone = data?.phone?.replace(/[\s\-()]/g, "");
+        data.phone = cleanPhone;
 
+        // Check for existing participant by phone
         const participant = await Registration.findOne({ phone: cleanPhone });
-
-        data.participantId = generateShortId();
-
-        if (!participant) {
-          data.phone = cleanPhone;
-
-          const result = await Registration.insertOne(data);
-          res.send({ ...result, participantId: data.participantId });
-        } else {
-          res.json({
-            status: 500,
+        if (participant) {
+          return res.status(400).json({
             success: false,
-            message: `Participant already exists. Search your Registration form using your name or contact us.`,
+            message:
+              "Participant already exists. Search your Registration form using your name or contact us.",
           });
         }
+
+        // Generate a unique participantId
+        let newID;
+        while (true) {
+          newID = generateShortId(); // Generate a new ID
+          const isIdAvailable = await Registration.findOne({
+            participantId: newID,
+          });
+          if (!isIdAvailable) break; // Exit loop if ID is unique
+        }
+
+        // Assign the unique participantId
+        data.participantId = newID;
+
+        // Insert the participant into the database
+        const result = await Registration.insertOne(data);
+        res.send({ ...result, participantId: data.participantId });
       })
     );
 
@@ -357,13 +372,13 @@ async function run() {
         merchantbillno: data?.merchantbillno,
         customername: data?.customername,
         customernumber: data?.customernumber,
-        amount: data?.children
-          ? 2000 + data?.driverFee + data?.familyFee - data.children * 500
-          : 2000 + data?.driverFee + data?.familyFee,
-        // amount: 1,
+        // amount: data?.children
+        //   ? 2000 + data?.driverFee + data?.familyFee - data.children * 500
+        //   : 2000 + data?.driverFee + data?.familyFee,
+        amount: 1,
         invoicedescription: "Participant Registration",
         successURL:
-          "https://api.registration.exstudentsforum-brghs.com/success-payment",
+          "https://registration.exstudentsforum-brghs.com/success-payment",
         failureURL:
           "https://registration.exstudentsforum-brghs.com/payment-failed",
         sendsms: "1",
@@ -389,10 +404,10 @@ async function run() {
         );
 
         if (!response?.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
+          throw new Error(`HTTP error! Status: ${response?.status}`);
         }
 
-        const responseData = await response.json();
+        const responseData = await response?.json();
 
         if (responseData?.error) {
           res.status(400).send({ message: responseData.message });
@@ -418,6 +433,7 @@ async function run() {
 
     // Success URL
     app.get("/success-payment", async (req, res) => {
+      console.log(req);
       const query = { paymentID: req?.query?.paymentID };
       const update = { $set: { status: "Paid" } };
       const result = await Registration.updateOne(query, update);
