@@ -122,10 +122,10 @@ async function run() {
         // Check for existing participant by phone
         const participant = await Registration.findOne({ phone: cleanPhone });
         if (participant) {
-          return res.status(400).json({
+          return res.json({
+            status: 500,
             success: false,
-            message:
-              "Participant already exists. Search your Registration form using your name or contact us.",
+            message: `Participant already exists. Here is your <a href="https://registration.exstudentsforum-brghs.com/preview/${participant.participantId}">Registration</a>`,
           });
         }
 
@@ -378,16 +378,12 @@ async function run() {
         amount: 1,
         invoicedescription: "Participant Registration",
         successURL:
-          "https://registration.exstudentsforum-brghs.com/success-payment",
+          "https://api.registration.exstudentsforum-brghs.com/success-payment",
         failureURL:
           "https://registration.exstudentsforum-brghs.com/payment-failed",
         sendsms: "1",
       };
 
-      //
-      const result = await Registration.findOne({
-        participantId: data?.merchantbillno,
-      });
       try {
         const payload = new URLSearchParams(initialData).toString();
 
@@ -412,16 +408,17 @@ async function run() {
         if (responseData?.error) {
           res.status(400).send({ message: responseData.message });
         } else {
-          const participantData = {
-            ...result,
-            paymentID: responseData?.paymentID,
-            paidAmount: responseData?.data.amount,
-          };
           const updateResult = await Registration.updateOne(
             { participantId: data?.merchantbillno },
-            { $set: participantData },
+            {
+              $set: {
+                paymentID: responseData?.paymentID,
+                paidAmount: responseData?.data.amount,
+              },
+            },
             { upsert: false }
           );
+
           if (updateResult?.modifiedCount > 0)
             res.send({ pay_url: responseData?.pay_url });
         }
