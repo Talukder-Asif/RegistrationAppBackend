@@ -177,6 +177,10 @@ async function run() {
             (sum, p) => sum + (p?.family_members || 0),
             0
           ),
+          totalPaidAmount: participants.reduce(
+            (sum, p) => sum + (p?.total_fee ? p.total_fee : 0),
+            0
+          ),
           totalChildren: participants.reduce(
             (sum, p) => sum + (p?.children ? Number(p.children) : 0),
             0
@@ -365,6 +369,10 @@ async function run() {
       res.send(result);
     });
 
+    // To fine the Participent ID form Payment ID
+    function extractParticipantID(paymentID) {
+      return paymentID.substring(8, 16);
+    }
     // Payment
     app.post("/create-payment", async (req, res) => {
       const data = req.body;
@@ -373,8 +381,11 @@ async function run() {
         customername: data?.customername,
         customernumber: data?.customernumber,
         // amount: data?.children
-        //   ? 2000 + data?.driverFee + data?.familyFee - data.children * 500
-        //   : 2000 + data?.driverFee + data?.familyFee,
+        //   ? data?.amount +
+        //     data?.driverFee +
+        //     data?.familyFee -
+        //     data.children * 500
+        //   : data?.amount + data?.driverFee + data?.familyFee,
         amount: 1,
         invoicedescription: "Participant Registration",
         successURL:
@@ -431,7 +442,8 @@ async function run() {
     // Success URL
     app.get("/success-payment", async (req, res) => {
       console.log(req);
-      const query = { paymentID: req?.query?.paymentID };
+      const paymentID = req.params.paymentID;
+      const query = { participantId: extractParticipantID(paymentID) };
       const update = { $set: { status: "Paid" } };
       const result = await Registration.updateOne(query, update);
       console.log(result);
