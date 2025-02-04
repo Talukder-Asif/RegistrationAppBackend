@@ -19,7 +19,9 @@ app.use(
       "https://registration.exstudentsforum-brghs.com",
       "https://www.registration.exstudentsforum-brghs.com",
       "https://api.registration.exstudentsforum-brghs.com",
+      "https://api2.registration.exstudentsforum-brghs.com",
       "https://www.api.registration.exstudentsforum-brghs.com",
+      "https://www2.api.registration.exstudentsforum-brghs.com",
     ],
     credentials: true,
   })
@@ -228,7 +230,19 @@ async function run() {
     app.get(
       "/totalParticipant",
       asyncWrapper(async (req, res) => {
-        const count = await Registration.countDocuments();
+        const batch = req.query.selectedBatch || "";
+        const search = req.query.search || "";
+
+        let query = {};
+
+        if (batch) {
+          query.ssc_year = batch;
+        }
+
+        if (search) {
+          query.name_english = { $regex: search, $options: "i" };
+        }
+        const count = await Registration.countDocuments(query);
         res.send({ total: count });
       })
     );
@@ -238,11 +252,25 @@ async function run() {
       asyncWrapper(async (req, res) => {
         const page = parseInt(req.query.page) || 0;
         const size = parseInt(req.query.size) || 10;
-        const result = await Registration.find()
+        const batch = req.query.selectedBatch || "";
+        const search = req.query.search || "";
+
+        let query = {};
+
+        if (batch) {
+          query.ssc_year = batch;
+        }
+
+        if (search) {
+          query.name_english = { $regex: search, $options: "i" };
+        }
+
+        const result = await Registration.find(query)
           .sort({ _id: -1 })
           .skip(page * size)
           .limit(size)
           .toArray();
+
         res.send(result);
       })
     );
@@ -250,14 +278,12 @@ async function run() {
     // Get All SSC Years
     app.get("/allSscYears", async (req, res) => {
       try {
-        const sscYears = await Registration.find(
-          {},
-          { projection: { ssc_year: 1, _id: 0 } }
-        ).toArray();
-        const uniqueYears = [
-          ...new Set(sscYears.map((entry) => entry.ssc_year)),
-        ].sort(); // Sort in ascending order
-        res.send(uniqueYears);
+        const sscYears = await Registration.aggregate([
+          { $group: { _id: "$ssc_year", count: { $sum: 1 } } },
+          { $sort: { _id: 1 } },
+        ]).toArray();
+
+        res.send(sscYears);
       } catch (error) {
         console.error("Error retrieving SSC years:", error);
         res.status(500).send({ error: "Failed to retrieve SSC years" });
@@ -314,6 +340,24 @@ async function run() {
       res.send(summary);
     });
 
+    // Get Filtered Participant
+    app.get("/view-batch", async (req, res) => {
+      const sscYear = req?.query?.targetBatch;
+      const result = await Registration.find({
+        ssc_year: sscYear,
+      }).toArray();
+      const summary = {
+        result,
+        tshirtSizes: result.reduce((sizes, p) => {
+          const sizeKey = p?.tshirt_size?.replace(/^(\d)/, "_$1");
+          sizes[sizeKey] = (sizes[sizeKey] || 0) + 1;
+          return sizes;
+        }, {}),
+      };
+
+      res.send(summary);
+    });
+
     app.put(
       "/participant/:id",
       asyncWrapper(async (req, res) => {
@@ -356,9 +400,14 @@ async function run() {
     // Get the search from the database
     app.get("/participants/search", async (req, res) => {
       const name_english = req.query.query;
-      const results = await Registration.find({
-        name_english: { $regex: name_english, $options: "i" },
-      }).toArray();
+      const batch = req.query.selectedBatch || "";
+      const query = batch
+        ? {
+            ssc_year: batch,
+            name_english: { $regex: name_english, $options: "i" },
+          }
+        : { name_english: { $regex: name_english, $options: "i" } };
+      const results = await Registration.find(query).toArray();
       res.send(results);
     });
 
@@ -380,16 +429,16 @@ async function run() {
         merchantbillno: data?.merchantbillno,
         customername: data?.customername,
         customernumber: data?.customernumber,
-        // amount: data?.children
-        //   ? data?.amount +
-        //     data?.driverFee +
-        //     data?.familyFee -
-        //     data.children * 500
-        //   : data?.amount + data?.driverFee + data?.familyFee,
-        amount: 1,
+        amount: data?.children
+          ? data?.amount +
+            data?.driverFee +
+            data?.familyFee -
+            data.children * 500
+          : data?.amount + data?.driverFee + data?.familyFee,
+        // amount: 1,
         invoicedescription: "Participant Registration",
         successURL:
-          "https://api.registration.exstudentsforum-brghs.com/success-payment",
+          "https://api2.registration.exstudentsforum-brghs.com/success-payment",
         failureURL:
           "https://registration.exstudentsforum-brghs.com/payment-failed",
         sendsms: "1",
@@ -442,11 +491,10 @@ async function run() {
     // Success URL
     app.get("/success-payment", async (req, res) => {
       console.log(req);
-      const paymentID = req.params.paymentID;
+      const paymentID = req?.query?.paymentID;
       const query = { participantId: extractParticipantID(paymentID) };
       const update = { $set: { status: "Paid" } };
       const result = await Registration.updateOne(query, update);
-      console.log(result);
       if (result.modifiedCount > 0) {
         res.redirect(
           `https://registration.exstudentsforum-brghs.com/payment-success/${req?.query?.paymentID}`
