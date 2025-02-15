@@ -198,6 +198,11 @@ async function run() {
             sizes[sizeKey] = (sizes[sizeKey] || 0) + 1;
             return sizes;
           }, {}),
+          religion: participants.reduce((religion, p) => {
+            const sizeKey = p?.religion;
+            religion[sizeKey] = (religion[sizeKey] || 0) + 1;
+            return religion;
+          }, {}),
         };
 
         res.json(summary);
