@@ -340,6 +340,11 @@ async function run() {
           sizes[sizeKey] = (sizes[sizeKey] || 0) + 1;
           return sizes;
         }, {}),
+        religion: result.reduce((religion, p) => {
+          const sizeKey = p?.religion;
+          religion[sizeKey] = (religion[sizeKey] || 0) + 1;
+          return religion;
+        }, {}),
       };
 
       res.send(summary);
