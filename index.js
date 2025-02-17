@@ -111,7 +111,6 @@ async function run() {
     );
 
     // create a new Registration
-    // Create a new Registration
     app.post(
       "/participant",
       asyncWrapper(async (req, res) => {
@@ -212,6 +211,93 @@ async function run() {
       }
     });
 
+    // Get all Participent By filter using Batch, Name
+    app.get(
+      "/allParticipant",
+      asyncWrapper(async (req, res) => {
+        const page = parseInt(req.query.page) || 0;
+        const size = parseInt(req.query.size) || 10;
+        const batch = req.query.selectedBatch || "";
+        const search = req.query.search || "";
+
+        let query = {};
+
+        if (batch) {
+          query.ssc_year = batch;
+        }
+
+        if (search) {
+          query.name_english = { $regex: search, $options: "i" };
+        }
+
+        const result = await Registration.find(query)
+          .sort({ _id: -1 })
+          .skip(page * size)
+          .limit(size)
+          .toArray();
+
+        res.send(result);
+      })
+    );
+
+    // Get A page Statistic Data
+    app.get(
+      "/page-stat-data",
+      asyncWrapper(async (req, res) => {
+        try {
+          const page = parseInt(req.query.page) || 0;
+          const size = parseInt(req.query.size) || 30;
+          const batch = req.query.selectedBatch || "";
+
+          let query = {};
+          if (batch) {
+            query.ssc_year = batch;
+          }
+
+          const participants = await Registration.find(query)
+            .skip(page * size)
+            .limit(size)
+            .toArray();
+
+          const summary = {
+            totalGuests: participants?.length,
+            totalFamilyMembers: participants?.reduce(
+              (sum, p) => sum + (p?.family_members || 0),
+              0
+            ),
+            totalPaidAmount: participants.reduce(
+              (sum, p) => sum + (p?.total_fee ? p.total_fee : 0),
+              0
+            ),
+            totalChildren: participants.reduce(
+              (sum, p) => sum + (p?.children ? Number(p.children) : 0),
+              0
+            ),
+            driversOneDay: participants.filter(
+              (p) => p?.driver === "Driver for 1 day"
+            ).length,
+            driversTwoDays: participants.filter(
+              (p) => p?.driver === "Driver for 2 days"
+            ).length,
+            tshirtSizes: participants.reduce((sizes, p) => {
+              const sizeKey = p?.tshirt_size?.replace(/^(\d)/, "_$1");
+              sizes[sizeKey] = (sizes[sizeKey] || 0) + 1;
+              return sizes;
+            }, {}),
+            religion: participants.reduce((religion, p) => {
+              const sizeKey = p?.religion;
+              religion[sizeKey] = (religion[sizeKey] || 0) + 1;
+              return religion;
+            }, {}),
+          };
+
+          res.json(summary);
+        } catch (error) {
+          res.status(500).json({ error: "Internal Server Error" });
+        }
+      })
+    );
+
     app.get(
       "/participant/:id",
       asyncWrapper(async (req, res) => {
@@ -249,34 +335,6 @@ async function run() {
         }
         const count = await Registration.countDocuments(query);
         res.send({ total: count });
-      })
-    );
-
-    app.get(
-      "/allParticipant",
-      asyncWrapper(async (req, res) => {
-        const page = parseInt(req.query.page) || 0;
-        const size = parseInt(req.query.size) || 10;
-        const batch = req.query.selectedBatch || "";
-        const search = req.query.search || "";
-
-        let query = {};
-
-        if (batch) {
-          query.ssc_year = batch;
-        }
-
-        if (search) {
-          query.name_english = { $regex: search, $options: "i" };
-        }
-
-        const result = await Registration.find(query)
-          .sort({ _id: -1 })
-          .skip(page * size)
-          .limit(size)
-          .toArray();
-
-        res.send(result);
       })
     );
 
@@ -331,6 +389,28 @@ async function run() {
       const sscYear = req?.query?.targetBatch;
       const result = await Registration.find({
         status: status,
+        ssc_year: sscYear,
+      }).toArray();
+      const summary = {
+        result,
+        tshirtSizes: result.reduce((sizes, p) => {
+          const sizeKey = p?.tshirt_size?.replace(/^(\d)/, "_$1");
+          sizes[sizeKey] = (sizes[sizeKey] || 0) + 1;
+          return sizes;
+        }, {}),
+        religion: result.reduce((religion, p) => {
+          const sizeKey = p?.religion;
+          religion[sizeKey] = (religion[sizeKey] || 0) + 1;
+          return religion;
+        }, {}),
+      };
+
+      res.send(summary);
+    });
+    // Get Filtered Participant
+    app.get("/filteredAll/registration", async (req, res) => {
+      const sscYear = req?.query?.targetBatch;
+      const result = await Registration.find({
         ssc_year: sscYear,
       }).toArray();
       const summary = {
